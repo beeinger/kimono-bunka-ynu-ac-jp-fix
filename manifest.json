@@ -10,5 +10,11 @@
       "run_at": "document_idle"
     }
   ],
-  "icons": { "128": "icons/icon128.png" }
+  "icons": { "128": "icons/icon128.png" },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "kimono-bunka-ynu-fix@sulecki.dev",
+      "strict_min_version": "109.0"
+    }
+  }
 }
