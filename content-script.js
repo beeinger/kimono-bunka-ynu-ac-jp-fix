@@ -1,8 +1,70 @@
 (function () {
   // GitHub repository base URL for raw content
   const GITHUB_RAW_BASE =
-    // "https://raw.githubusercontent.com/beeinger/kimono-bunka-ynu-ac-jp-fix/main/mp4/";
     "https://github.com/beeinger/kimono-bunka-ynu-ac-jp-fix/raw/refs/heads/main/mp4/";
+
+  // Build extension URL for packaged VTT files
+  function vttUrlInExtension(path) {
+    // Works in Chrome/Firefox MV3
+    return chrome.runtime.getURL(`vtt/${path}`);
+  }
+
+  /**
+   * Extract video number from filename (e.g., "001.asx" -> "001")
+   */
+  function getVideoNumber(filename) {
+    if (!filename) return null;
+    const match = filename.match(/(\d{3})/);
+    return match ? match[1] : null;
+  }
+
+  /**
+   * Load VTT tracks by fetching from extension and creating Blob URLs to avoid CORS issues
+   */
+  async function attachVttTracks(video, videoNumber) {
+    try {
+      // Fetch Japanese VTT from extension
+      const jpResponse = await fetch(
+        vttUrlInExtension(`jp/${videoNumber}.vtt`)
+      );
+      if (jpResponse.ok) {
+        const jpContent = await jpResponse.text();
+        const jpBlob = new Blob([jpContent], { type: "text/vtt" });
+        const jpBlobUrl = URL.createObjectURL(jpBlob);
+
+        const jpTrack = document.createElement("track");
+        jpTrack.kind = "subtitles";
+        jpTrack.src = jpBlobUrl;
+        jpTrack.srclang = "ja";
+        jpTrack.label = "Japanese";
+        jpTrack.default = true; // Enable Japanese by default
+        video.appendChild(jpTrack);
+      }
+    } catch (error) {
+      console.warn("Failed to load Japanese subtitles:", error);
+    }
+
+    try {
+      // Fetch English VTT from extension
+      const enResponse = await fetch(
+        vttUrlInExtension(`en/${videoNumber}.vtt`)
+      );
+      if (enResponse.ok) {
+        const enContent = await enResponse.text();
+        const enBlob = new Blob([enContent], { type: "text/vtt" });
+        const enBlobUrl = URL.createObjectURL(enBlob);
+
+        const enTrack = document.createElement("track");
+        enTrack.kind = "subtitles";
+        enTrack.src = enBlobUrl;
+        enTrack.srclang = "en";
+        enTrack.label = "English";
+        video.appendChild(enTrack);
+      }
+    } catch (error) {
+      console.warn("Failed to load English subtitles:", error);
+    }
+  }
 
   /**
    * Convert ASX/WMV path to GitHub MP4 URL
@@ -87,27 +149,13 @@
     source.type = "video/mp4";
     video.appendChild(source);
 
-    // Help browser detect embedded subtitles
-    video.addEventListener("loadedmetadata", () => {
-      // Force the browser to scan for embedded subtitle tracks
-      if (video.textTracks && video.textTracks.length > 0) {
-        console.log(
-          "Found",
-          video.textTracks.length,
-          "embedded subtitle tracks"
-        );
-        // Enable the first track by default if available
-        for (let i = 0; i < video.textTracks.length; i++) {
-          const track = video.textTracks[i];
-          if (track.kind === "subtitles" || track.kind === "captions") {
-            track.mode = "showing";
-            break;
-          }
-        }
-      } else {
-        console.log("No embedded subtitle tracks found");
-      }
-    });
+    // Add external VTT subtitle tracks
+    const filename = originalAsxPath.split("/").pop();
+    const videoNumber = getVideoNumber(filename);
+
+    if (videoNumber) {
+      attachVttTracks(video, videoNumber);
+    }
 
     // download links row
     const tools = document.createElement("p");
@@ -144,7 +192,7 @@
     videoInfo.style.color = "#555";
     videoInfo.style.fontSize = "12px";
     videoInfo.innerHTML =
-      "🎬 Optimized MP4 video with embedded Japanese & English subtitles";
+      "🎬 Optimized MP4 video with Japanese & English subtitles";
 
     container.appendChild(video);
     container.appendChild(tools);
