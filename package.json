@@ -1,0 +1,10 @@
+{
+  "name": "kimono-bunka-ynu-ac-jp-fix",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

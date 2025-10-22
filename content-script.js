@@ -1,7 +1,8 @@
 (function () {
   // GitHub repository base URL for raw content
   const GITHUB_RAW_BASE =
-    "https://raw.githubusercontent.com/beeinger/kimono-bunka-ynu-ac-jp-fix/main/mp4/";
+    // "https://raw.githubusercontent.com/beeinger/kimono-bunka-ynu-ac-jp-fix/main/mp4/";
+    "https://github.com/beeinger/kimono-bunka-ynu-ac-jp-fix/raw/refs/heads/main/mp4/";
 
   /**
    * Convert ASX/WMV path to GitHub MP4 URL
@@ -53,14 +54,60 @@
     // video element with modern MP4 support
     const video = document.createElement("video");
     video.setAttribute("controls", "controls");
-    if (width) video.width = parseInt(width, 10) || undefined;
-    if (height) video.height = parseInt(height, 10) || undefined;
+    // Make video bigger to match content width - use original width if available, otherwise default to 480px
+    let videoWidth, videoHeight;
+    if (width) {
+      const originalWidth = parseInt(width, 10);
+      // Scale up smaller videos to be more prominent
+      videoWidth =
+        originalWidth < 400
+          ? Math.max(480, originalWidth * 1.5)
+          : originalWidth;
+    } else {
+      videoWidth = 480; // Default larger size
+    }
+
+    // Calculate height to prevent jumping - use original height if available, otherwise calculate from width
+    if (height) {
+      const originalHeight = parseInt(height, 10);
+      const originalWidth = parseInt(width, 10) || 320;
+      // Scale height proportionally with width
+      videoHeight = Math.round((originalHeight / originalWidth) * videoWidth);
+    } else {
+      // Default 16:9 aspect ratio for unknown dimensions
+      videoHeight = Math.round((videoWidth * 9) / 16);
+    }
+
+    video.width = videoWidth;
+    video.height = videoHeight;
 
     // MP4 source
     const source = document.createElement("source");
     source.src = mp4Url;
     source.type = "video/mp4";
     video.appendChild(source);
+
+    // Help browser detect embedded subtitles
+    video.addEventListener("loadedmetadata", () => {
+      // Force the browser to scan for embedded subtitle tracks
+      if (video.textTracks && video.textTracks.length > 0) {
+        console.log(
+          "Found",
+          video.textTracks.length,
+          "embedded subtitle tracks"
+        );
+        // Enable the first track by default if available
+        for (let i = 0; i < video.textTracks.length; i++) {
+          const track = video.textTracks[i];
+          if (track.kind === "subtitles" || track.kind === "captions") {
+            track.mode = "showing";
+            break;
+          }
+        }
+      } else {
+        console.log("No embedded subtitle tracks found");
+      }
+    });
 
     // download links row
     const tools = document.createElement("p");
@@ -73,7 +120,7 @@
     mp4Link.target = "_blank";
     mp4Link.rel = "noopener noreferrer";
     mp4Link.setAttribute("download", "");
-    mp4Link.style.marginRight = "12px";
+    mp4Link.style.marginRight = "8px";
     mp4Link.style.color = "#0066cc";
     tools.appendChild(mp4Link);
 
@@ -86,27 +133,10 @@
       wmvLink.target = "_blank";
       wmvLink.rel = "noopener noreferrer";
       wmvLink.setAttribute("download", "");
-      wmvLink.style.marginRight = "12px";
+      wmvLink.style.marginRight = "8px";
       wmvLink.style.color = "#666";
       tools.appendChild(wmvLink);
     }
-
-    // copy button
-    const copyBtn = document.createElement("button");
-    copyBtn.textContent = "Copy MP4 URL";
-    copyBtn.style.padding = "2px 6px";
-    copyBtn.style.cursor = "pointer";
-    copyBtn.style.border = "1px solid #ccc";
-    copyBtn.style.borderRadius = "3px";
-    copyBtn.style.background = "#f5f5f5";
-    copyBtn.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(mp4Url);
-        copyBtn.textContent = "Copied!";
-        setTimeout(() => (copyBtn.textContent = "Copy MP4 URL"), 1200);
-      } catch {}
-    });
-    tools.appendChild(copyBtn);
 
     // video info
     const videoInfo = document.createElement("div");
@@ -125,58 +155,73 @@
   /**
    * Try to extract an ASX path from:
    *  - <embed src="...asx">
+   *  - <object> with <param name="URL" value="...asx">
    *  - sibling/child <param name="URL" value="...asx"> (older pattern)
    */
-  function getAsxFromEmbed(embed) {
-    // 1) direct src
-    let asx = embed.getAttribute("src") || embed.getAttribute("data");
+  function getAsxFromElement(element) {
+    // 1) direct src (for embed tags)
+    let asx = element.getAttribute("src") || element.getAttribute("data");
     if (asx && /\.asx(\b|$)/i.test(asx)) return asx;
 
-    // 2) <param name="URL" value="...asx">
-    const params = embed.parentElement
-      ? embed.parentElement.querySelectorAll(
-          'param[name="URL"], param[name="Url"], param[name="url"]'
-        )
-      : embed.querySelectorAll?.(
-          'param[name="URL"], param[name="Url"], param[name="url"]'
-        );
+    // 2) <param name="URL" value="...asx"> (for object tags)
+    const params =
+      element.querySelectorAll?.(
+        'param[name="URL"], param[name="Url"], param[name="url"]'
+      ) || [];
 
-    for (const p of params || []) {
+    for (const p of params) {
       const v = p.getAttribute("value");
       if (v && /\.asx(\b|$)/i.test(v)) return v;
     }
+
+    // 3) Check parent element for params (fallback)
+    const parentParams = element.parentElement
+      ? element.parentElement.querySelectorAll(
+          'param[name="URL"], param[name="Url"], param[name="url"]'
+        )
+      : [];
+
+    for (const p of parentParams) {
+      const v = p.getAttribute("value");
+      if (v && /\.asx(\b|$)/i.test(v)) return v;
+    }
+
     return null;
   }
 
-  function replaceEmbeds() {
-    const embeds = Array.from(document.querySelectorAll("embed"));
+  function replaceMediaElements() {
+    // Handle both <object> and <embed> tags
+    const elements = Array.from(document.querySelectorAll("object, embed"));
 
-    for (const embed of embeds) {
-      const asxPath = getAsxFromEmbed(embed);
+    for (const element of elements) {
+      const asxPath = getAsxFromElement(element);
       if (!asxPath) continue;
 
-      const w = embed.getAttribute("width");
-      const h = embed.getAttribute("height");
+      const w = element.getAttribute("width");
+      const h = element.getAttribute("height");
 
       const mp4Url = toMp4UrlFromEmbedSrc(asxPath);
       if (!mp4Url) continue;
 
       const videoEl = buildVideoElement(mp4Url, asxPath, w, h);
-      embed.replaceWith(videoEl);
+      element.replaceWith(videoEl);
     }
   }
 
-  // Run once on load; also try again if late-loaded markup appears.
-  replaceEmbeds();
+  // Run immediately to prevent ASX downloads
+  replaceMediaElements();
 
-  // MutationObserver for any dynamically injected <embed> tags
+  // MutationObserver for any dynamically injected <object> and <embed> tags
   const mo = new MutationObserver((muts) => {
     for (const m of muts) {
       for (const node of m.addedNodes) {
         if (!(node instanceof Element)) continue;
-        if (node.tagName?.toLowerCase() === "embed") {
+        if (
+          node.tagName?.toLowerCase() === "embed" ||
+          node.tagName?.toLowerCase() === "object"
+        ) {
           // Just process this one
-          const asx = getAsxFromEmbed(node);
+          const asx = getAsxFromElement(node);
           if (asx) {
             const mp4Url = toMp4UrlFromEmbedSrc(asx);
             if (mp4Url) {
@@ -187,8 +232,8 @@
           }
         } else {
           // Or scan within it
-          node.querySelectorAll?.("embed").forEach((e) => {
-            const asx = getAsxFromEmbed(e);
+          node.querySelectorAll?.("object, embed").forEach((e) => {
+            const asx = getAsxFromElement(e);
             if (!asx) return;
             const mp4Url = toMp4UrlFromEmbedSrc(asx);
             if (!mp4Url) return;
