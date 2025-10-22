@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Kimono Bunka Yokohama National University Fix",
-  "version": "1.0.0",
-  "description": "Replace old ASX <embed> players with optimized MP4 <video> with added EN and JP subtitles and download links on kimono-bunka.ynu.ac.jp",
+  "version": "2.0.0",
+  "description": "Replace old ASX <embed> players (WMV) with optimized MP4 <video> with added EN and JP subtitles on kimono-bunka.ynu.ac.jp",
   "content_scripts": [
     {
       "matches": ["https://kimono-bunka.ynu.ac.jp/*"],
